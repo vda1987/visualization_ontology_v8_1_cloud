@@ -284,6 +284,40 @@ def get_query_value(key: str, default: str) -> str:
 
 
 # ============================================================
+# Tutorial download
+# ============================================================
+
+
+@st.cache_data(show_spinner=False)
+def load_tutorial_video(video_path: str) -> bytes:
+    """Load the bundled GUI tutorial video for browser download."""
+
+    return Path(video_path).read_bytes()
+
+
+def render_tutorial_download() -> None:
+    """Render the tutorial download button when the video exists."""
+
+    video_path = Path(__file__).resolve().parent / "video-GUI.mp4"
+
+    st.sidebar.subheader("Tutorial")
+
+    if video_path.exists() and video_path.is_file():
+        st.sidebar.download_button(
+            "Download GUI video tutorial",
+            data=load_tutorial_video(str(video_path)),
+            file_name="video-GUI.mp4",
+            mime="video/mp4",
+            use_container_width=True,
+            help="Download the MP4 tutorial for the graphical ontology interface.",
+        )
+    else:
+        st.sidebar.caption(
+            "Tutorial video unavailable. Expected file: video-GUI.mp4"
+        )
+
+
+# ============================================================
 # Cloud project workspace
 # ============================================================
 
@@ -4087,6 +4121,9 @@ def render_explorer(
 
 def main() -> None:
     """Application entry point for local use and Streamlit Community Cloud."""
+
+    render_tutorial_download()
+    st.sidebar.divider()
 
     st.sidebar.header("Open ontology")
     uploaded_file = st.sidebar.file_uploader(
