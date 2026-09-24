@@ -296,25 +296,21 @@ def load_tutorial_video(video_path: str) -> bytes:
 
 
 def render_tutorial_download() -> None:
-    """Render the tutorial download button when the video exists."""
+    """Render a link to the GUI tutorial video hosted on Google Drive."""
 
-    video_path = Path(__file__).resolve().parent / "video-GUI.mp4"
+    tutorial_url = (
+        "https://drive.google.com/uc?"
+        "export=download&id=1olrjhO2Ntd1ALDcmgS2E37IFpM0pY63T"
+    )
 
     st.sidebar.subheader("Tutorial")
 
-    if video_path.exists() and video_path.is_file():
-        st.sidebar.download_button(
-            "Download GUI video tutorial",
-            data=load_tutorial_video(str(video_path)),
-            file_name="video-GUI.mp4",
-            mime="video/mp4",
-            use_container_width=True,
-            help="Download the MP4 tutorial for the graphical ontology interface.",
-        )
-    else:
-        st.sidebar.caption(
-            "Tutorial video unavailable. Expected file: video-GUI.mp4"
-        )
+    st.sidebar.link_button(
+        "Download GUI video tutorial",
+        tutorial_url,
+        use_container_width=True,
+        help="Download the MP4 tutorial for the graphical ontology interface.",
+    )
 
 
 # ============================================================
