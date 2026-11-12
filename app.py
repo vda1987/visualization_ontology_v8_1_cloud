@@ -23,7 +23,7 @@ from rdflib import BNode, Literal, Namespace, OWL, RDF, RDFS, URIRef, XSD
 # ============================================================
 
 st.set_page_config(
-    page_title="Ontology Explorer V9 — Cloud",
+    page_title="Ontology Explorer V9.1 — Cloud",
     page_icon="🧩",
     layout="wide",
 )
@@ -967,6 +967,17 @@ def build_class_tooltip(
         "Ontology class",
     ]
 
+    comments = [
+        str(value)
+        for value in graph.objects(class_uri, RDFS.comment)
+        if isinstance(value, Literal)
+    ]
+
+    if comments:
+        lines.extend(["", "Comment / definition:"])
+        for comment in comments:
+            lines.append(f"• {comment}")
+
     parents = [
         parent
         for child, parent in get_named_subclasses(graph)
@@ -1288,6 +1299,7 @@ def describe_individual(
         for class_uri in types:
             lines.append(f"• {english_label(class_uri)}")
 
+    comments = []
     literal_pairs = []
     object_pairs = []
 
@@ -1296,9 +1308,17 @@ def describe_individual(
             continue
 
         if isinstance(obj, Literal):
-            literal_pairs.append((predicate, obj))
+            if predicate == RDFS.comment:
+                comments.append(str(obj))
+            elif predicate != RDFS.label:
+                literal_pairs.append((predicate, obj))
         elif isinstance(obj, URIRef):
             object_pairs.append((predicate, obj))
+
+    if comments:
+        lines.extend(["", "Comment / definition:"])
+        for comment in comments:
+            lines.append(f"• {comment}")
 
     if literal_pairs:
         lines.extend(["", "Fields:"])
@@ -3522,9 +3542,11 @@ html, body { margin: 0 !important; padding: 0 !important; overflow: hidden !impo
     document.getElementById('v9-node-editor').style.display='block';
     document.getElementById('v9-edge-editor').style.display='none';
     const n=nodes.get(id)||baseMeta.get(id)||{}; const info=originalNodeInfo(id); const edit=currentNodeEdit(id);
-    document.getElementById('v9-node-label').value=edit?.label ?? n.label ?? id;
-    document.getElementById('v9-node-comment').value=edit?.comment ?? (info.comments?.[0]?.value||'');
-    renderAttrRows(edit?.attributes ?? info.attributes ?? []);
+    const newRec=(state.nodes||[]).find(x=>x.id===id)||null;
+    document.getElementById('v9-node-label').value=edit?.label ?? newRec?.label ?? n.label ?? id;
+    document.getElementById('v9-node-comment').value=edit?.comment ?? newRec?.comment ?? (info.comments?.[0]?.value||'');
+    const newAttrs=(newRec?.fields||[]).map(f=>({predicate:f.uri,predicateLabel:f.label||f.uri,value:f.value,datatype:f.datatype||'',lang:''}));
+    renderAttrRows(edit?.attributes ?? (newRec ? newAttrs : (info.attributes ?? [])));
     document.getElementById('v9-node-shape').value=edit?.shape ?? n.shape ?? 'dot';
     document.getElementById('v9-node-color').value=hexColor(edit?.color ?? n.color,'#7C8DB5');
     document.getElementById('v9-node-size').value=Number(edit?.size ?? n.size ?? 28);
@@ -3727,7 +3749,8 @@ html, body { margin: 0 !important; padding: 0 !important; overflow: hidden !impo
     const color=document.getElementById("v9-node-color").value;
     const size=Number(document.getElementById("v9-node-size").value||28);
     const attributes=collectAttrRows();
-    nodes.update({id:selectedNodeId,label,shape,color,size});
+    const liveTitle=comment ? `${label}\n\nComment / definition:\n${comment}` : (n.title||label);
+    nodes.update({id:selectedNodeId,label,shape,color,size,title:liveTitle});
     if(n.isNew){
       const rec=state.nodes.find(x=>x.id===selectedNodeId); if(rec){rec.label=label;rec.shape=shape;rec.color=color;rec.size=size;rec.comment=comment;rec.fields=attributes.map(a=>({uri:a.predicate,datatype:a.datatype,label:a.predicate,value:a.value}));}
     } else {
@@ -3894,7 +3917,7 @@ html, body { margin: 0 !important; padding: 0 !important; overflow: hidden !impo
     p.nodes.forEach(id=>{const n=nodes.get(id);if(!n?.isNew)return;const pos=network.getPositions([id])[id],s=state.nodes.find(x=>x.id===id);if(s){s.x=pos.x;s.y=pos.y;}}); save();
   });
 
-  function nodeTTL(n){let ttl=`${iri(n.id)} ${iri(RDF_TYPE)} ${iri(OWL_NAMED_INDIVIDUAL)} , ${iri(n.classUri)} ;\n  ${iri(RDFS_LABEL)} \"${esc(n.label)}\"@en`; (n.fields||[]).forEach(f=>ttl+=` ;\n  ${iri(f.uri)} ${lit(f.value,f.datatype)}`); return ttl+" .\n\n";}
+  function nodeTTL(n){let ttl=`${iri(n.id)} ${iri(RDF_TYPE)} ${iri(OWL_NAMED_INDIVIDUAL)} , ${iri(n.classUri)} ;\n  ${iri(RDFS_LABEL)} \"${esc(n.label)}\"@en`; if(n.comment)ttl+=` ;\n  <http://www.w3.org/2000/01/rdf-schema#comment> \"${esc(n.comment)}\"@en`; (n.fields||[]).forEach(f=>ttl+=` ;\n  ${iri(f.uri)} ${lit(f.value,f.datatype)}`); return ttl+" .\n\n";}
   function edgeTTL(e){
     let ttl="";
     const kind=e.edgeKind || (isClass(e.source)&&isClass(e.target)?"schema":"assertion");
@@ -3954,7 +3977,7 @@ html, body { margin: 0 !important; padding: 0 !important; overflow: hidden !impo
     return `${iri(e.propertyUri)} ${iri(RDFS_LABEL)} "${esc(e.label)}"@en .\n\n`;
   }
   function additionsTTL(){
-    let ttl="# --- V9 additions and edits ---\n\n";
+    let ttl="# --- V9.1 additions and edits ---\n\n";
     state.nodes.forEach(n=>ttl+=nodeTTL(n));
     state.edges.forEach(e=>ttl+=edgeTTL(e));
     (state.nodeEdits||[]).forEach(n=>ttl+=editedNodeTTL(n));
@@ -3963,7 +3986,7 @@ html, body { margin: 0 !important; padding: 0 !important; overflow: hidden !impo
   }
 
   function sessionTTL(){
-    return "# V9 interactive graph editor session modifications\n"
+    return "# V9.1 interactive graph editor session modifications\n"
       + "# The uploaded source ontology was not modified.\n\n"
       + deletionManifestTTL()
       + additionsTTL();
@@ -3982,7 +4005,7 @@ html, body { margin: 0 !important; padding: 0 !important; overflow: hidden !impo
       .map(t=>t.line)
       .join("\n");
 
-    return "# Ontology Explorer V9 — complete merged ontology\n"
+    return "# Ontology Explorer V9.1 — complete merged ontology\n"
       + "# Uploaded source kept unchanged; deletions and additions are applied here.\n\n"
       + remaining
       + "\n\n"
@@ -4012,9 +4035,10 @@ html, body { margin: 0 !important; padding: 0 !important; overflow: hidden !impo
       const c=cls(n.classUri);
       if(!c||nodes.get(n.id))return;
 
+      const restoredTitle=n.comment ? `${n.label}\n\nUser-added instance of ${c.label}\n\nComment / definition:\n${n.comment}` : `${n.label}\n\nUser-added instance of ${c.label}`;
       nodes.add({
-        id:n.id,label:n.label,title:`${n.label}\n\nUser-added instance of ${c.label}`,
-        shape:c.shape,size:Math.max(20,c.size-2),color:c.color,
+        id:n.id,label:n.label,title:restoredTitle,
+        shape:n.shape||c.shape,size:Number(n.size||Math.max(20,c.size-2)),color:n.color||c.color,
         nodeType:"individual",category:"custom_instance",classUri:n.classUri,
         isNew:true,x:n.x,y:n.y,fixed:false
       });
@@ -4080,7 +4104,7 @@ def render_explorer(
 ) -> None:
     """Render the main ontology explorer."""
 
-    st.title("Ontology Explorer V9 — Cloud")
+    st.title("Ontology Explorer V9.1 — Cloud")
     st.caption(
         "Upload and explore your own OWL/RDF ontology in Turtle format. "
         "No ontology is bundled or opened by default."
@@ -4373,7 +4397,7 @@ def main() -> None:
     )
 
     if uploaded_file is None:
-        st.title("Ontology Explorer V9 — Cloud")
+        st.title("Ontology Explorer V9.1 — Cloud")
         st.subheader("Blank project")
         st.write(
             "Upload a Turtle (.ttl) ontology from your computer to start. "
