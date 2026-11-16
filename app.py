@@ -23,7 +23,7 @@ from rdflib import BNode, Literal, Namespace, OWL, RDF, RDFS, URIRef, XSD
 # ============================================================
 
 st.set_page_config(
-    page_title="Ontology Explorer V9.1 — Cloud",
+    page_title="Ontology Explorer V9.2 — Cloud",
     page_icon="🧩",
     layout="wide",
 )
@@ -1607,13 +1607,18 @@ def build_pyvis(
               "centralGravity": 0.012,
               "springLength": 190,
               "springConstant": 0.065,
-              "damping": 0.65,
+              "damping": 0.78,
               "avoidOverlap": 0.8
             },
+            "minVelocity": 0.35,
+            "maxVelocity": 45,
+            "timestep": 0.45,
+            "adaptiveTimestep": true,
             "stabilization": {
               "enabled": true,
-              "iterations": 700,
-              "updateInterval": 50
+              "iterations": 650,
+              "updateInterval": 50,
+              "fit": true
             }
           },
           "interaction": {
@@ -1688,6 +1693,8 @@ def render_network(
 
 <div id="v6-graph-toolbar">
   <button type="button" onclick="v6FitGraph()">Fit</button>
+  <button type="button" onclick="v92RelaxGraph()">Relax graph</button>
+  <button type="button" onclick="v92FreezeGraph()">Freeze</button>
   <button type="button" onclick="v6ToggleFullscreen()">Fullscreen</button>
   <button type="button" onclick="v6Export4K()">Export 4K PNG</button>
 </div>
@@ -1701,6 +1708,34 @@ def render_network(
     if (typeof network === "undefined" || !network) return;
     network.fit({ animation: false });
     network.redraw();
+  }
+
+  function v92FreezeGraph() {
+    if (typeof network === "undefined" || !network) return;
+    network.stopSimulation();
+    network.setOptions({ physics: { enabled: false } });
+    network.redraw();
+  }
+
+  function v92RelaxGraph(durationMs) {
+    if (typeof network === "undefined" || !network) return;
+    const duration = Number.isFinite(durationMs) ? durationMs : 1800;
+    network.setOptions({ physics: { enabled: true } });
+    network.startSimulation();
+    window.setTimeout(v92FreezeGraph, duration);
+  }
+
+  // ForceAtlas2 is used to find a pleasant layout, then physics is disabled.
+  // This keeps the spring-like appearance without a graph that moves forever.
+  if (typeof network !== "undefined" && network) {
+    network.once("stabilizationIterationsDone", function () {
+      window.setTimeout(v92FreezeGraph, 120);
+    });
+    network.once("stabilized", function () {
+      window.setTimeout(v92FreezeGraph, 120);
+    });
+    // Safety stop for very large or difficult graphs.
+    window.setTimeout(v92FreezeGraph, 5000);
   }
 
   async function v6ToggleFullscreen() {
@@ -2943,7 +2978,7 @@ def render_direct_graph_editor(
 ) -> None:
     """Render a mouse-driven graph editor without modifying the source TTL."""
 
-    st.title("Ontology Interactive Graph Editor — V9")
+    st.title("Ontology Interactive Graph Editor — V9.2")
     st.caption(
         "Add typed instances directly on the ontology graph, connect them with existing "
         "or prototype relations, and export both a modifications-only TTL and a complete "
@@ -3393,6 +3428,15 @@ html, body { margin: 0 !important; padding: 0 !important; overflow: hidden !impo
   </div>
 
   <div class="v71-section">
+    <div class="v71-title" style="font-size:14px">Graph layout</div>
+    <div class="v71-muted">The spring layout settles automatically and then freezes. Use Relax after major structural changes, or Freeze immediately while editing.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+      <button id="v92-relax-editor">Relax graph</button>
+      <button id="v92-freeze-editor">Freeze</button>
+    </div>
+  </div>
+
+  <div class="v71-section">
     <div class="v71-title" style="font-size:14px">Selection</div>
     <div id="v71-selection" class="v71-box">Nothing selected</div>
   </div>
@@ -3458,6 +3502,31 @@ html, body { margin: 0 !important; padding: 0 !important; overflow: hidden !impo
     document.getElementById("v71-status").textContent = "Editor initialization failed: PyVis graph objects were not found.";
     return;
   }
+
+  let v92RelaxTimer = null;
+  function v92FreezeEditorGraph() {
+    if (v92RelaxTimer) { window.clearTimeout(v92RelaxTimer); v92RelaxTimer = null; }
+    network.stopSimulation();
+    network.setOptions({ physics: { enabled: false } });
+    network.redraw();
+  }
+  function v92RelaxEditorGraph(durationMs=1800) {
+    if (v92RelaxTimer) window.clearTimeout(v92RelaxTimer);
+    network.setOptions({ physics: { enabled: true } });
+    network.startSimulation();
+    v92RelaxTimer = window.setTimeout(v92FreezeEditorGraph, durationMs);
+  }
+
+  const relaxButton = document.getElementById("v92-relax-editor");
+  const freezeButton = document.getElementById("v92-freeze-editor");
+  if (relaxButton) relaxButton.onclick = () => v92RelaxEditorGraph(1800);
+  if (freezeButton) freezeButton.onclick = () => v92FreezeEditorGraph();
+
+  network.once("stabilizationIterationsDone", () => window.setTimeout(v92FreezeEditorGraph, 120));
+  network.once("stabilized", () => window.setTimeout(v92FreezeEditorGraph, 120));
+  // Safety stop: very large graphs are still made workable even if the physics
+  // engine never declares perfect stabilization.
+  window.setTimeout(v92FreezeEditorGraph, 5000);
 
   const storageKey = "ontology-v9-editor::" + PAYLOAD.sourceName;
   let state = {nodes: [], edges: [], deletedNodes: [], deletedEdges: [], nodeEdits: [], edgeEdits: []};
@@ -3810,7 +3879,7 @@ html, body { margin: 0 !important; padding: 0 !important; overflow: hidden !impo
     if(sourceKind==="class" && targetKind==="class") edgeKind="schema";
     else if(sourceKind==="individual" && targetKind==="class") edgeKind="instance_to_class";
     else if(sourceKind==="class" && targetKind==="individual") edgeKind="class_to_instance";
-    state.edges.push({id,source:sourceId,target:targetId,relationUri:uri,relationLabel:label,custom:Boolean(custom),edgeKind,sourceClass:nodeClass(sourceId),targetClass:nodeClass(targetId)}); save();
+    state.edges.push({id,source:sourceId,target:targetId,relationUri:uri,relationLabel:label,custom:Boolean(custom),edgeKind,sourceClass:nodeClass(sourceId),targetClass:nodeClass(targetId)}); save(); v92RelaxEditorGraph(1200);
     document.getElementById("v71-custom-relation").value=""; sourceId=null;targetId=null;refreshRelations();status(`Created relation: ${label}.`);
   };
 
